@@ -15,3 +15,8 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# artifact download
+tmpapk*
+apk.zip
+apk_out/
