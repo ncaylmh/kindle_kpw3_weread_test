@@ -18,5 +18,5 @@ Thumbs.db
 
 # artifact download
 tmpapk*
-apk.zip
+apk*.zip
 apk_out/
