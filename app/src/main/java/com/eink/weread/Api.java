@@ -45,7 +45,10 @@ final class Api {
                     "{}", webHeaders());
             if (r.ok()) {
                 List<ShelfBook> out = parseShelfJson(r.body);
-                if (!out.isEmpty()) return out;
+                if (!out.isEmpty()) {
+                    saveShelfCache(out);
+                    return out;
+                }
                 webErr = "书架返回为空";
             } else {
                 webErr = "HTTP " + r.code + " " + r.body;
@@ -53,6 +56,12 @@ final class Api {
         } catch (Throwable e) {
             webErr = e.getClass().getSimpleName()
                     + (e.getMessage() == null ? "" : ": " + e.getMessage());
+        }
+        // 通道 1.5：本地缓存书架（离线时用）
+        List<ShelfBook> cachedShelf = loadShelfCache();
+        if (cachedShelf != null && !cachedShelf.isEmpty()) {
+            Diag.add("书架缓存命中 " + cachedShelf.size() + " 本");
+            return cachedShelf;
         }
         // 通道 2：官方 Skill 网关（需要 API Key）
         if (Session.getApiKey().length() == 0) {
@@ -71,6 +80,42 @@ final class Api {
             throw new Exception("书架接口 HTTP " + r.code + "（请检查 API Key）");
         }
         return parseShelfJson(r.body);
+    }
+
+    private static void saveShelfCache(List<ShelfBook> list) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (ShelfBook b : list) {
+                JSONObject o = new JSONObject();
+                o.put("id", b.bookId);
+                o.put("title", b.title);
+                o.put("author", b.author);
+                arr.put(o);
+            }
+            Cache.saveMeta("shelf", arr.toString());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static List<ShelfBook> loadShelfCache() {
+        try {
+            String json = Cache.loadMeta("shelf");
+            if (json == null) return null;
+            JSONArray arr = new JSONArray(json);
+            List<ShelfBook> out = new ArrayList<ShelfBook>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                ShelfBook b = new ShelfBook();
+                b.bookId = o.optString("id", "");
+                b.title = o.optString("title", "");
+                b.author = o.optString("author", "");
+                if (b.bookId.length() > 0) out.add(b);
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private static List<ShelfBook> parseShelfJson(String json) throws Exception {
@@ -109,6 +154,11 @@ final class Api {
 
     /** POST /web/book/chapterInfos  body: {bookIds:[...]} */
     static List<Chapter> fetchChapters(String bookId) throws Exception {
+        List<Chapter> fromCache = cachedChapters(bookId);
+        if (fromCache != null && !fromCache.isEmpty()) {
+            Diag.add("目录缓存命中 " + fromCache.size() + " 章");
+            return fromCache;
+        }
         JSONObject body = new JSONObject();
         JSONArray ids = new JSONArray();
         ids.put(bookId);
@@ -149,7 +199,46 @@ final class Api {
             ch.chapterIdx = c.optInt("chapterIdx", c.optInt("idx", out.size()));
             if (ch.chapterUid.length() > 0) out.add(ch);
         }
+        if (!out.isEmpty()) saveChapters(bookId, out);
         return out;
+    }
+
+    // ------------------------------------------------------------------ 目录缓存
+
+    private static List<Chapter> cachedChapters(String bookId) {
+        try {
+            String json = Cache.loadMeta("toc_" + bookId);
+            if (json == null) return null;
+            JSONArray arr = new JSONArray(json);
+            List<Chapter> out = new ArrayList<Chapter>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                Chapter c = new Chapter();
+                c.chapterUid = o.optString("uid", "");
+                c.title = o.optString("title", "");
+                c.chapterIdx = o.optInt("idx", i);
+                if (c.chapterUid.length() > 0) out.add(c);
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static void saveChapters(String bookId, List<Chapter> list) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (Chapter c : list) {
+                JSONObject o = new JSONObject();
+                o.put("uid", c.chapterUid);
+                o.put("title", c.title);
+                o.put("idx", c.chapterIdx);
+                arr.put(o);
+            }
+            Cache.saveMeta("toc_" + bookId, arr.toString());
+        } catch (Throwable ignored) {
+        }
     }
 
     // ------------------------------------------------------------------ psvts

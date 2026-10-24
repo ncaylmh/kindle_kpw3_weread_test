@@ -641,7 +641,22 @@ public class ReaderActivity extends Activity {
                         }
                         try {
                             if (psvts == null) psvts = Api.fetchPsvts(bookId, uid);
-                            Api.fetchChapterText(bookId, uid, psvts);
+                            Api.ChapterText ct = Api.fetchChapterText(bookId, uid, psvts);
+                            // 插图一起缓存，保证整本完全离线
+                            if (ct.images != null) {
+                                for (int k = 0; k < ct.images.size(); k++) {
+                                    final String u = ct.images.get(k);
+                                    runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            pd.setMessage("(" + cur + "/" + total + ") 插图 "
+                                                    + Diag.snippet(u, 30));
+                                        }
+                                    });
+                                    Http.getBytes(u);
+                                    Thread.sleep(120);
+                                }
+                            }
                             done++;
                         } catch (Throwable t) {
                             failed++;
@@ -657,9 +672,9 @@ public class ReaderActivity extends Activity {
                         @Override
                         public void run() {
                             pd.dismiss();
-                            toast("下载完成：新增 " + d + " 章，已缓存跳过 " + sk
-                                    + " 章，失败 " + fa + " 章（共 "
-                                    + (Cache.sizeBytes() / 1024) + " KB）");
+                            toast("下载完成：新增 " + d + " 章，跳过 " + sk + " 章，失败 " + fa
+                                    + " 章；插图 " + Cache.imageCount() + " 张；共占用 "
+                                    + (Cache.sizeBytes() / 1024) + " KB");
                         }
                     });
                 }
@@ -670,7 +685,8 @@ public class ReaderActivity extends Activity {
     private void clearCache() {
         new android.app.AlertDialog.Builder(this)
                 .setTitle("清理章节缓存")
-                .setMessage("当前缓存 " + (Cache.sizeBytes() / 1024) + " KB，清理后需重新下载章节。")
+                .setMessage("当前缓存 " + (Cache.sizeBytes() / 1024) + " KB（章节 + 插图 "
+                        + Cache.imageCount() + " 张），清理后需重新下载。")
                 .setPositiveButton("清理", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface d, int w) {
@@ -697,7 +713,9 @@ public class ReaderActivity extends Activity {
         sb.append("书籍ID：").append(bookId).append("\n");
         sb.append("章节数：").append(chapters == null ? 0 : chapters.size()).append("\n");
         sb.append("psvts：").append(psvts == null ? "无" : "有").append("\n");
-        sb.append("章节缓存：").append(Cache.sizeBytes() / 1024).append(" KB\n");
+        sb.append("缓存合计：").append(Cache.sizeBytes() / 1024).append(" KB（插图 "
+                + Cache.imageCount() + " 张，"
+                + Cache.imageSizeBytes() / 1024 + " KB）\n");
         showTextDialog("诊断信息", sb.toString());
     }
 

@@ -119,6 +119,11 @@ final class Http {
 
     /** 下载二进制资源（插图），返回 null 表示失败 */
     static byte[] getBytes(String url) {
+        byte[] cached = Cache.loadImage(url);
+        if (cached != null) {
+            Diag.add("IMG 缓存命中 " + cached.length + "B " + Diag.snippet(url, 50));
+            return cached;
+        }
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
@@ -139,6 +144,7 @@ final class Http {
             while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
             is.close();
             byte[] data = bos.toByteArray();
+            Cache.saveImage(url, data);
             Diag.add("IMG " + code + " " + data.length + "B " + Diag.snippet(url, 60));
             return data;
         } catch (Throwable t) {

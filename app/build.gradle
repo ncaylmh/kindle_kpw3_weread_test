@@ -7,8 +7,8 @@ android {
         applicationId "com.eink.weread"
         minSdkVersion 19        // Android 4.4.2（KPW3 刷机 ROM）
         targetSdkVersion 19     // 目标 19：完全避开运行时权限模型
-        versionCode 10
-        versionName "2.7-offline"
+        versionCode 11
+        versionName "2.8-full-offline"
     }
 
     compileOptions {

@@ -16,11 +16,79 @@ import org.json.JSONObject;
 final class Cache {
 
     private static File dir;
+    private static File imgDir;
 
     static synchronized void init(android.content.Context ctx) {
         if (dir == null && ctx != null) {
             dir = new File(ctx.getFilesDir(), "chapters");
             if (!dir.exists()) dir.mkdirs();
+            imgDir = new File(ctx.getFilesDir(), "images");
+            if (!imgDir.exists()) imgDir.mkdirs();
+        }
+    }
+
+    // ------------------------------------------------------------------ 通用文本缓存（目录/书架）
+
+    private static File metaFile(String key) {
+        if (dir == null) return null;
+        return new File(dir, "meta_" + WeRead.md5Hex(key) + ".json");
+    }
+
+    static synchronized String loadMeta(String key) {
+        File f = metaFile(key);
+        if (f == null || !f.exists()) return null;
+        try {
+            return read(f);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    static synchronized void saveMeta(String key, String json) {
+        File f = metaFile(key);
+        if (f == null || json == null) return;
+        try {
+            FileOutputStream fos = new FileOutputStream(f);
+            fos.write(json.getBytes(Const.UTF8));
+            fos.close();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // ------------------------------------------------------------------ 插图缓存
+
+    private static File imgFile(String url) {
+        if (imgDir == null) return null;
+        return new File(imgDir, WeRead.md5Hex(url) + ".img");
+    }
+
+    static synchronized byte[] loadImage(String url) {
+        File f = imgFile(url);
+        if (f == null || !f.exists() || f.length() == 0) return null;
+        try {
+            byte[] data = new byte[(int) f.length()];
+            FileInputStream fis = new FileInputStream(f);
+            int off = 0;
+            while (off < data.length) {
+                int n = fis.read(data, off, data.length - off);
+                if (n <= 0) break;
+                off += n;
+            }
+            fis.close();
+            return off == data.length ? data : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    static synchronized void saveImage(String url, byte[] data) {
+        File f = imgFile(url);
+        if (f == null || data == null || data.length == 0) return;
+        try {
+            FileOutputStream fos = new FileOutputStream(f);
+            fos.write(data);
+            fos.close();
+        } catch (Throwable ignored) {
         }
     }
 
@@ -79,15 +147,34 @@ final class Cache {
     }
 
     static synchronized void clearAll() {
-        if (dir == null || !dir.exists()) return;
-        File[] fs = dir.listFiles();
+        deleteChildren(dir);
+        deleteChildren(imgDir);
+    }
+
+    private static void deleteChildren(File d) {
+        if (d == null || !d.exists()) return;
+        File[] fs = d.listFiles();
         if (fs != null) for (File f : fs) f.delete();
     }
 
     static synchronized long sizeBytes() {
-        if (dir == null || !dir.exists()) return 0;
+        return dirSize(dir) + dirSize(imgDir);
+    }
+
+    static synchronized long imageSizeBytes() {
+        return dirSize(imgDir);
+    }
+
+    static synchronized int imageCount() {
+        if (imgDir == null || !imgDir.exists()) return 0;
+        File[] fs = imgDir.listFiles();
+        return fs == null ? 0 : fs.length;
+    }
+
+    private static long dirSize(File d) {
+        if (d == null || !d.exists()) return 0;
         long n = 0;
-        File[] fs = dir.listFiles();
+        File[] fs = d.listFiles();
         if (fs != null) for (File f : fs) n += f.length();
         return n;
     }
