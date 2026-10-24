@@ -96,6 +96,17 @@ public class ReaderActivity extends Activity {
                 });
             }
         });
+        pageView.setCenterTapListener(new PageView.CenterTapListener() {
+            @Override
+            public void onCenterTap() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        showMenu();
+                    }
+                });
+            }
+        });
         pageView.setSelectionCallback(new PageView.SelectionCallback() {
             @Override
             public void onSelectionMenu() {
@@ -257,6 +268,7 @@ public class ReaderActivity extends Activity {
                                     pendingImages.add(k);
                                 }
                                 pageView.setChapterTitle(chapters.get(index).title);
+                                pageView.setImageBreaks(fCt.imageOffsets);
                                 pageView.setText(fCt.text);
                                 showImagePage(pendingImages.poll());
                                 return;
@@ -283,6 +295,7 @@ public class ReaderActivity extends Activity {
                             hideImagePage();
                             charPos = restoreCharPos(chapters.get(index).chapterUid);
                             pageView.setChapterTitle(chapters.get(index).title);
+                            pageView.setImageBreaks(fCt.imageOffsets);
                             pageView.setText(fCt.text, charPos);
                             collectPageImages();
                             Diag.add("渲染 文本=" + fCt.text.length() + "字 起始位置=" + charPos
@@ -522,6 +535,8 @@ public class ReaderActivity extends Activity {
                 "行距 －",
                 "边距 ＋",
                 "边距 －",
+                "下载全书（离线阅读）",
+                "清理章节缓存",
                 "诊断信息"
         };
         new AlertDialog.Builder(this)
@@ -538,6 +553,8 @@ public class ReaderActivity extends Activity {
                         else if (w == 7) changeLine(-0.1f);
                         else if (w == 8) changePad(1);
                         else if (w == 9) changePad(-1);
+                        else if (w == 10) downloadWholeBook();
+                        else if (w == 11) clearCache();
                         else showDiag();
                     }
                 }).show();
@@ -578,6 +595,93 @@ public class ReaderActivity extends Activity {
         toast("边距 " + v);
     }
 
+    // ------------------------------------------------------------------ 离线缓存
+
+    private boolean downloading = false;
+
+    /** 逐章下载整本书（已缓存的跳过），供离线阅读 */
+    private void downloadWholeBook() {
+        if (chapters == null || chapters.isEmpty()) {
+            toast("目录尚未加载");
+            return;
+        }
+        if (downloading) {
+            toast("正在下载中…");
+            return;
+        }
+        downloading = true;
+        final int total = chapters.size();
+        final android.app.ProgressDialog pd = new android.app.ProgressDialog(this);
+        pd.setTitle("下载全书");
+        pd.setMessage("准备中…");
+        pd.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+        pd.setMax(total);
+        pd.setCancelable(false);
+        pd.show();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int done = 0, skipped = 0, failed = 0;
+                try {
+                    for (int i = 0; i < total; i++) {
+                        final int cur = i + 1;
+                        final String title = chapters.get(i).title;
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                pd.setMessage("(" + cur + "/" + total + ") " + title);
+                                pd.setProgress(cur);
+                            }
+                        });
+                        String uid = chapters.get(i).chapterUid;
+                        if (Cache.load(bookId, uid) != null) {
+                            skipped++;
+                            continue;
+                        }
+                        try {
+                            if (psvts == null) psvts = Api.fetchPsvts(bookId, uid);
+                            Api.fetchChapterText(bookId, uid, psvts);
+                            done++;
+                        } catch (Throwable t) {
+                            failed++;
+                            Diag.add("下载失败 章=" + title + " " + t.getClass().getSimpleName());
+                        }
+                        Thread.sleep(300); // 限速，避免触发风控
+                    }
+                } catch (InterruptedException ignored) {
+                } finally {
+                    downloading = false;
+                    final int d = done, sk = skipped, fa = failed;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            pd.dismiss();
+                            toast("下载完成：新增 " + d + " 章，已缓存跳过 " + sk
+                                    + " 章，失败 " + fa + " 章（共 "
+                                    + (Cache.sizeBytes() / 1024) + " KB）");
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void clearCache() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("清理章节缓存")
+                .setMessage("当前缓存 " + (Cache.sizeBytes() / 1024) + " KB，清理后需重新下载章节。")
+                .setPositiveButton("清理", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        Cache.clearAll();
+                        toast("缓存已清理");
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     /** 诊断面板：最近 40 次请求的状态码与响应片段 */
     private void showDiag() {
         List<String> lines = Diag.snapshot();
@@ -593,6 +697,7 @@ public class ReaderActivity extends Activity {
         sb.append("书籍ID：").append(bookId).append("\n");
         sb.append("章节数：").append(chapters == null ? 0 : chapters.size()).append("\n");
         sb.append("psvts：").append(psvts == null ? "无" : "有").append("\n");
+        sb.append("章节缓存：").append(Cache.sizeBytes() / 1024).append(" KB\n");
         showTextDialog("诊断信息", sb.toString());
     }
 
@@ -600,7 +705,10 @@ public class ReaderActivity extends Activity {
         if (chapters == null) return;
         String[] names = new String[chapters.size()];
         for (int i = 0; i < names.length; i++) {
-            names[i] = (i + 1) + ". " + chapters.get(i).title;
+            String title = chapters.get(i).title;
+            if (i == chapterIndex) title = "▶ " + title;
+            Integer p = progressMap.get(chapters.get(i).chapterUid);
+            names[i] = (i + 1) + ". " + title + (p != null && p > 0 ? "  ·  " + p + "%" : "");
         }
         new AlertDialog.Builder(this)
                 .setTitle(bookTitle)

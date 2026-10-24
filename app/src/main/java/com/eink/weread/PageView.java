@@ -41,6 +41,32 @@ public class PageView extends View {
         void onSelectionMenu();
     }
 
+    /** 中间区域点按（打开菜单） */
+    public interface CenterTapListener {
+        void onCenterTap();
+    }
+
+    private CenterTapListener centerTapListener;
+
+    public void setCenterTapListener(CenterTapListener l) {
+        centerTapListener = l;
+    }
+
+    /** 插图位置：分页遇到这些偏移就断页，让图文顺排 */
+    private int[] imageBreaks = new int[0];
+
+    public void setImageBreaks(java.util.List<Integer> offsets) {
+        if (offsets == null || offsets.isEmpty()) {
+            imageBreaks = new int[0];
+        } else {
+            int[] a = new int[offsets.size()];
+            for (int i = 0; i < a.length; i++) a[i] = offsets.get(i);
+            java.util.Arrays.sort(a);
+            imageBreaks = a;
+        }
+        if (text.length() > 0) rebuild(currentCharPos());
+    }
+
     private String text = "";
     private final List<int[]> pages = new ArrayList<int[]>(); // {start, end)
     private int pageIndex = 0;
@@ -180,6 +206,15 @@ public class PageView extends View {
                 y += lineH;
                 end = layout.getLineEnd(line);
                 line++;
+            }
+            // 插图位置断页（对齐到行首，图文顺排）
+            for (int b : imageBreaks) {
+                if (b > start && b < end) {
+                    int ln = layout.getLineForOffset(b);
+                    int ls = layout.getLineStart(ln);
+                    if (ls > start) end = ls;
+                    break;
+                }
             }
             pages.add(new int[]{start, end});
             if (end <= start) break; // 单行超高保护，避免死循环
@@ -373,10 +408,13 @@ public class PageView extends View {
             clearSelection();
             return;
         }
-        if (x < getWidth() / 3f) {
+        float w = getWidth();
+        if (x < w / 3f) {
             if (!prev() && edgeListener != null) edgeListener.onPrevEdge();
-        } else {
+        } else if (x > w * 2f / 3f) {
             if (!next() && edgeListener != null) edgeListener.onNextEdge();
+        } else {
+            if (centerTapListener != null) centerTapListener.onCenterTap();
         }
     }
 

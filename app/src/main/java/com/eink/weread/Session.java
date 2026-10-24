@@ -26,6 +26,7 @@ final class Session {
                 Http.initTrust(appCtx); // 加载内置证书，兼容老 ROM 的信任库
             } catch (Throwable ignored) {
             }
+            Cache.init(appCtx);
         }
     }
 

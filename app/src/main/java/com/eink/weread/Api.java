@@ -194,6 +194,12 @@ final class Api {
 
     /** 拉取并解码一章，返回纯文本 + 坐标映射 */
     static ChapterText fetchChapterText(String bookId, String chapterUid, String psvts) throws Exception {
+        ChapterText cached = Cache.load(bookId, chapterUid);
+        if (cached != null) {
+            Diag.add("缓存命中 章=" + chapterUid + " 文本=" + cached.text.length() + "字 插图="
+                    + cached.images.size());
+            return cached;
+        }
         String e0 = fetchShard("/web/book/chapter/e_0", bookId, chapterUid, psvts, false);
         String e1 = fetchShard("/web/book/chapter/e_1", bookId, chapterUid, psvts, false);
         String e3 = fetchShard("/web/book/chapter/e_3", bookId, chapterUid, psvts, false);
@@ -223,6 +229,7 @@ final class Api {
         if (html.length() > 0 && ct.text.length() > 0 && ct.text.length() < 50) {
             Diag.add("⚠ 文本过短片段：" + Diag.snippet(ct.text, 100));
         }
+        if (ct.text.length() > 20) Cache.save(bookId, chapterUid, ct);
         return ct;
     }
 
