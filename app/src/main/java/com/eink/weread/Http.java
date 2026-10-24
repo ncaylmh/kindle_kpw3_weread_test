@@ -148,6 +148,9 @@ final class Http {
             conn.setRequestMethod(method);
             conn.setRequestProperty("User-Agent", WeRead.USER_AGENT);
             conn.setRequestProperty("Accept", "application/json, text/plain, */*");
+            // 网页版接口普遍校验 Origin/Referer，缺了会返回 401 或空体
+            conn.setRequestProperty("Origin", ORIGIN);
+            conn.setRequestProperty("Referer", ORIGIN + "/");
             if (extraHeaders != null) {
                 for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
                     if (e.getValue() != null) conn.setRequestProperty(e.getKey(), e.getValue());
@@ -200,6 +203,13 @@ final class Http {
                 is = conn.getErrorStream();
             }
             resp.body = is == null ? "" : readAll(is);
+            // 诊断日志：方法 + 路径 + 状态码 + 响应片段
+            try {
+                String path = new URL(url).getPath();
+                Diag.add(method + " " + path + " → " + resp.code
+                        + " | " + Diag.snippet(resp.body, 120));
+            } catch (Throwable ignored) {
+            }
             return resp;
         } finally {
             conn.disconnect();

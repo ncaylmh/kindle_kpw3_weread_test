@@ -423,26 +423,40 @@ public class ReaderActivity extends Activity {
     private void showMenu() {
         final String[] items = {
                 "选择章节",
-                "本章划线",
-                "本章想法",
-                "全书书评",
-                "热门划线",
+                "上传划线（先长按选中文字）",
                 "发表想法",
-                reporting ? "时长上报：开（点击关闭）" : "时长上报：关（点击开启）"
+                reporting ? "时长上报：开（点击关闭）" : "时长上报：关（点击开启）",
+                "诊断信息"
         };
         new AlertDialog.Builder(this)
                 .setItems(items, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface d, int w) {
                         if (w == 0) showChapterList();
-                        else if (w == 1) showUnderlines(false);
-                        else if (w == 2) showChapterThoughts();
-                        else if (w == 3) showBookReviews();
-                        else if (w == 4) showUnderlines(true);
-                        else if (w == 5) askThought(null, null);
-                        else toggleReporting();
+                        else if (w == 1) doUnderline(null);
+                        else if (w == 2) askThought(null, null);
+                        else if (w == 3) toggleReporting();
+                        else showDiag();
                     }
                 }).show();
+    }
+
+    /** 诊断面板：最近 40 次请求的状态码与响应片段 */
+    private void showDiag() {
+        List<String> lines = Diag.snapshot();
+        StringBuilder sb = new StringBuilder();
+        if (lines.isEmpty()) {
+            sb.append("本次启动还没有网络请求记录。\n");
+        } else {
+            for (String s : lines) sb.append(s).append("\n\n");
+        }
+        sb.append("--- 环境 ---\n");
+        sb.append("Cookie：").append(Session.cookieHeader().length() > 0 ? "已获取" : "无").append("\n");
+        sb.append("书名：").append(bookTitle).append("\n");
+        sb.append("书籍ID：").append(bookId).append("\n");
+        sb.append("章节数：").append(chapters == null ? 0 : chapters.size()).append("\n");
+        sb.append("psvts：").append(psvts == null ? "无" : "有").append("\n");
+        showTextDialog("诊断信息", sb.toString());
     }
 
     private void showChapterList() {
