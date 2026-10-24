@@ -122,6 +122,8 @@ public class ReaderActivity extends Activity {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
 
+        applyTypesetting();
+
         loading = new ProgressDialog(this);
         loading.setMessage("加载中…");
 
@@ -239,9 +241,26 @@ public class ReaderActivity extends Activity {
                             Toast.makeText(ReaderActivity.this,
                                     "章节加载失败：" + fErr, Toast.LENGTH_LONG).show();
                         } else if (fCt.text.trim().length() < 20) {
-                            // 封面 / 插图页没有正文，自动跳到下一章（最多连跳 8 章）
-                            Diag.add("跳过无正文章节：" + chapters.get(index).title
-                                    + "（" + fCt.text.trim().length() + "字）");
+                            // 封面 / 插图页：有图先显示图，没有图才跳到下一章
+                            Diag.add("无正文章节：" + chapters.get(index).title
+                                    + "（" + fCt.text.trim().length() + "字，插图 "
+                                    + fCt.images.size() + " 张）");
+                            if (!fCt.images.isEmpty()) {
+                                emptySkips = 0;
+                                currentText = fCt.text;
+                                coordMap = fCt.coords;
+                                chapterImages = fCt.images;
+                                chapterImageOffsets = fCt.imageOffsets;
+                                pendingImages.clear();
+                                imagesShownPages.clear();
+                                for (int k = 0; k < chapterImages.size(); k++) {
+                                    pendingImages.add(k);
+                                }
+                                pageView.setChapterTitle(chapters.get(index).title);
+                                pageView.setText(fCt.text);
+                                showImagePage(pendingImages.poll());
+                                return;
+                            }
                             if (emptySkips < 8 && index + 1 < chapters.size()) {
                                 emptySkips++;
                                 Toast.makeText(ReaderActivity.this,
@@ -263,6 +282,7 @@ public class ReaderActivity extends Activity {
                             imagesShownPages.clear();
                             hideImagePage();
                             charPos = restoreCharPos(chapters.get(index).chapterUid);
+                            pageView.setChapterTitle(chapters.get(index).title);
                             pageView.setText(fCt.text, charPos);
                             collectPageImages();
                             Diag.add("渲染 文本=" + fCt.text.length() + "字 起始位置=" + charPos
@@ -496,6 +516,12 @@ public class ReaderActivity extends Activity {
                 "上传划线（先长按选中文字）",
                 "发表想法",
                 reporting ? "时长上报：开（点击关闭）" : "时长上报：关（点击开启）",
+                "字号 ＋",
+                "字号 －",
+                "行距 ＋",
+                "行距 －",
+                "边距 ＋",
+                "边距 －",
                 "诊断信息"
         };
         new AlertDialog.Builder(this)
@@ -506,9 +532,50 @@ public class ReaderActivity extends Activity {
                         else if (w == 1) doUnderline(null);
                         else if (w == 2) askThought(null, null);
                         else if (w == 3) toggleReporting();
+                        else if (w == 4) changeFont(1);
+                        else if (w == 5) changeFont(-1);
+                        else if (w == 6) changeLine(0.1f);
+                        else if (w == 7) changeLine(-0.1f);
+                        else if (w == 8) changePad(1);
+                        else if (w == 9) changePad(-1);
                         else showDiag();
                     }
                 }).show();
+    }
+
+    // ------------------------------------------------------------------ 排版设置
+
+    private void applyTypesetting() {
+        float fontDp = Session.prefFloat("font_px", 19f);
+        float lineMult = Session.prefFloat("line_mult", 1.30f);
+        int padDp = Session.prefInt("pad_h", 18);
+        pageView.setFontPx(dip(fontDp));
+        pageView.setSpacingMult(lineMult);
+        pageView.setPadH(dip(padDp));
+    }
+
+    private void changeFont(int dir) {
+        float cur = Session.prefFloat("font_px", 19f);
+        float v = Math.max(14f, Math.min(32f, cur + dir * 1.5f));
+        Session.setPrefFloat("font_px", v);
+        pageView.setFontPx(dip(v));
+        toast("字号 " + Math.round(v));
+    }
+
+    private void changeLine(float delta) {
+        float cur = Session.prefFloat("line_mult", 1.30f);
+        float v = Math.max(1.05f, Math.min(2.1f, cur + delta));
+        Session.setPrefFloat("line_mult", v);
+        pageView.setSpacingMult(v);
+        toast("行距 " + String.format("%.1f", v));
+    }
+
+    private void changePad(int dir) {
+        int cur = Session.prefInt("pad_h", 18);
+        int v = Math.max(8, Math.min(56, cur + dir * 4));
+        Session.setPrefInt("pad_h", v);
+        pageView.setPadH(dip(v));
+        toast("边距 " + v);
     }
 
     /** 诊断面板：最近 40 次请求的状态码与响应片段 */

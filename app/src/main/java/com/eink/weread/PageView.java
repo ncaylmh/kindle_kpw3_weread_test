@@ -8,8 +8,11 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.text.Layout.Alignment;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import android.text.style.LeadingMarginSpan;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -45,8 +48,14 @@ public class PageView extends View {
     private final Paint metaPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint highlight = new Paint();
     private int padTop, padBottom, padH;
-    private float spacingMult = 1.15f;
+    private float spacingMult = 1.30f;
     private float spacingAdd;
+    /** 正文字号（px） */
+    private float fontPx;
+    /** 排版后的富文本（含首行缩进 span，不改变字符偏移） */
+    private CharSequence styled = "";
+    private String chapterTitle = "";
+    private int headerH, footerH;
 
     // 选区状态
     private int selStart = -1, selEnd = -1;
@@ -56,20 +65,60 @@ public class PageView extends View {
     public PageView(Context c) {
         super(c);
         paint.setColor(0xFF111111);
-        paint.setTextSize(dip(19));
+        fontPx = dip(19);
+        paint.setTextSize(fontPx);
         metaPaint.setColor(0xFF999999);
         metaPaint.setTextSize(dip(11));
         highlight.setColor(0xFFDDDDDD); // 墨水屏友好的浅灰高亮
         padH = dip(18);
-        padTop = dip(18);
-        padBottom = dip(30);
-        spacingAdd = dip(5);
+        padTop = dip(26);
+        padBottom = dip(24);
+        headerH = dip(16);
+        footerH = dip(18);
+        spacingAdd = dip(2);
         setBackgroundColor(Color.WHITE);
         setLongClickable(true);
     }
 
     private int dip(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    // ------------------------------------------------------------------ 排版设置
+
+    public float getFontPx() { return fontPx; }
+
+    public float getSpacingMult() { return spacingMult; }
+
+    public int getPadH() { return padH; }
+
+    public void setChapterTitle(String t) {
+        chapterTitle = t == null ? "" : t;
+        invalidate();
+    }
+
+    public void setFontPx(float px) {
+        float v = Math.max(dip(13), Math.min(dip(34), px));
+        if (Math.abs(v - fontPx) < 0.5f) return;
+        fontPx = v;
+        paint.setTextSize(v);
+        int pos = currentCharPos();
+        rebuild(pos);
+    }
+
+    public void setSpacingMult(float m) {
+        float v = Math.max(1.0f, Math.min(2.2f, m));
+        if (Math.abs(v - spacingMult) < 0.01f) return;
+        spacingMult = v;
+        spacingAdd = v > 1.6f ? dip(4) : dip(2);
+        rebuild(currentCharPos());
+    }
+
+    public void setPadH(int px) {
+        int v = Math.max(dip(8), Math.min(dip(60), px));
+        if (v == padH) return;
+        padH = v;
+        rebuild(currentCharPos());
     }
 
     public void setText(String t) {
@@ -115,8 +164,9 @@ public class PageView extends View {
             return;
         }
         int w = getWidth() - padH * 2;
-        int h = getHeight() - padTop - padBottom;
-        StaticLayout layout = new StaticLayout(text, paint, w,
+        int h = getHeight() - padTop - padBottom - headerH - footerH;
+        styled = buildStyled(text);
+        StaticLayout layout = new StaticLayout(styled, paint, w,
                 Alignment.ALIGN_NORMAL, spacingMult, spacingAdd, false);
         int line = 0;
         int total = layout.getLineCount();
@@ -191,8 +241,20 @@ public class PageView extends View {
         }
         int[] range = pages.get(pageIndex);
         int w = getWidth() - padH * 2;
-        StaticLayout layout = new StaticLayout(text, range[0], range[1], paint, w,
+        int textTop = padTop + headerH;
+        StaticLayout layout = new StaticLayout(styled, range[0], range[1], paint, w,
                 Alignment.ALIGN_NORMAL, spacingMult, spacingAdd, false);
+
+        // 页眉：章节名（超宽截断）
+        if (chapterTitle.length() > 0) {
+            metaPaint.setColor(0xFF888888);
+            String t = chapterTitle;
+            float maxW = getWidth() - padH * 2;
+            while (metaPaint.measureText(t) > maxW && t.length() > 4) {
+                t = t.substring(0, t.length() - 2);
+            }
+            canvas.drawText(t, padH, padTop + dip(11), metaPaint);
+        }
 
         // 选区高亮（浅灰，墨水屏友好）
         if (hasSelection()) {
@@ -206,18 +268,40 @@ public class PageView extends View {
                 float x2 = layout.getPrimaryHorizontal(to);
                 float top = layout.getLineTop(line);
                 float bottom = layout.getLineBottom(line);
-                canvas.drawRect(padH + x1, padTop + top, padH + x2, padTop + bottom, highlight);
+                canvas.drawRect(padH + x1, textTop + top, padH + x2, textTop + bottom, highlight);
             }
         }
 
         canvas.save();
-        canvas.translate(padH, padTop);
+        canvas.translate(padH, textTop);
         layout.draw(canvas);
         canvas.restore();
 
-        String meta = (pageIndex + 1) + " / " + pages.size();
+        // 页脚：章节进度百分比 + 页码
+        int pct = text.length() == 0 ? 0 : (int) ((long) range[1] * 100 / text.length());
+        String meta = pct + "%   " + (pageIndex + 1) + "/" + pages.size();
+        metaPaint.setColor(0xFF999999);
         float tw = metaPaint.measureText(meta);
-        canvas.drawText(meta, (getWidth() - tw) / 2, getHeight() - dip(12), metaPaint);
+        canvas.drawText(meta, (getWidth() - tw) / 2, getHeight() - dip(6), metaPaint);
+    }
+
+    /** 段落首行缩进 2 字符（用 span 实现，字符偏移保持不变，划线坐标不受影响） */
+    private CharSequence buildStyled(String t) {
+        SpannableString sp = new SpannableString(t);
+        int indent = (int) paint.measureText("\u3000\u3000");
+        int n = t.length();
+        int i = 0;
+        while (i < n) {
+            // 找段落起点（跳过空行）
+            while (i < n && (t.charAt(i) == '\n' || t.charAt(i) == ' ')) i++;
+            if (i >= n) break;
+            int end = t.indexOf('\n', i);
+            if (end < 0) end = n;
+            sp.setSpan(new LeadingMarginSpan.Standard(indent, 0), i, end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            i = end + 1;
+        }
+        return sp;
     }
 
     // ------------------------------------------------------------------ 选区

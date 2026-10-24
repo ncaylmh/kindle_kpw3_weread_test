@@ -128,5 +128,23 @@ final class Session {
         return System.currentTimeMillis() - getLastRenewalAt() >= 10 * 60 * 1000L;
     }
 
+    // ------------------------------------------------------------------ 排版偏好
+
+    static float prefFloat(String key, float def) {
+        return prefs == null ? def : prefs.getFloat(key, def);
+    }
+
+    static void setPrefFloat(String key, float v) {
+        if (prefs != null) prefs.edit().putFloat(key, v).commit();
+    }
+
+    static int prefInt(String key, int def) {
+        return prefs == null ? def : prefs.getInt(key, def);
+    }
+
+    static void setPrefInt(String key, int v) {
+        if (prefs != null) prefs.edit().putInt(key, v).commit();
+    }
+
     private Session() {}
 }
