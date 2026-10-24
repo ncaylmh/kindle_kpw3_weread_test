@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" font-family="-apple-system,Segoe UI,Microsoft YaHei,sans-serif">
+  <rect width="720" height="420" fill="#f6f8fa"/>
+  <!-- run detail page header -->
+  <rect x="10" y="10" width="700" height="40" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <circle cx="36" cy="30" r="7" fill="#1a7f37"/>
+  <path d="M32 30 l3 3 l6 -7" stroke="#ffffff" stroke-width="2" fill="none"/>
+  <text x="52" y="34" font-size="13" fill="#24292f" font-weight="bold">fix: add missing JSONException import · #3</text>
+  <text x="52" y="48" font-size="10" fill="#57606a">Build APK #3: Commit a34aaa0 pushed by ncaylmh</text>
+  <!-- left: jobs -->
+  <rect x="10" y="62" width="220" height="70" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <circle cx="30" cy="84" r="6" fill="#1a7f37"/>
+  <text x="44" y="88" font-size="12" fill="#24292f" font-weight="bold">build</text>
+  <text x="30" y="112" font-size="11" fill="#1a7f37">✓ 成功（约 1 分钟）</text>
+  <!-- main summary -->
+  <rect x="240" y="62" width="470" height="110" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="256" y="86" font-size="12" fill="#57606a">Jobs</text>
+  <text x="256" y="110" font-size="12" fill="#1a7f37" font-weight="bold">✓ build　成功</text>
+  <text x="256" y="134" font-size="11" fill="#57606a">Set up job ✓ · Checkout ✓ · Set up JDK 11 ✓</text>
+  <text x="256" y="152" font-size="11" fill="#57606a">Build debug APK ✓ · Upload APK artifact ✓</text>
+  <!-- artifacts section highlighted -->
+  <rect x="10" y="190" width="700" height="150" rx="8" fill="#ddf4ff" stroke="#0969da" stroke-width="2"/>
+  <text x="30" y="220" font-size="15" fill="#24292f" font-weight="bold">Artifacts　← 下载区在这里</text>
+  <rect x="30" y="240" width="300" height="44" rx="6" fill="#ffffff" stroke="#0969da" stroke-width="1.5"/>
+  <text x="46" y="258" font-size="12" fill="#0969da" font-weight="bold">⬇ eink-weread-debug-apk</text>
+  <text x="46" y="275" font-size="10" fill="#57606a">点击下载（得到 zip，需登录 GitHub）</text>
+  <!-- pointer -->
+  <path d="M120 300 l0 26 l6 -6 l5 12 l6 -3 l-5 -11 l9 -1 z" fill="#cf222e" stroke="#ffffff" stroke-width="1.5"/>
+  <text x="360" y="270" font-size="11" fill="#57606a">保留 90 天，过期可重新触发构建</text>
+  <!-- steps -->
+  <rect x="10" y="352" width="700" height="56" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <text x="26" y="374" font-size="12" fill="#24292f" font-weight="bold">第 3 步：拉到页面最底部 → 点 Artifacts 下的「eink-weread-debug-apk」下载 zip → 解压出 app-debug.apk</text>
+  <text x="26" y="396" font-size="12" fill="#24292f">未登录时看不到 Artifacts，请先点右上角 Sign in 登录你的 GitHub 账号</text>
+</svg>

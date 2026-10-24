@@ -58,6 +58,29 @@ gradle assembleDebug     # 或用 Android Studio 打开本目录
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### 不想本地编译？GitHub 云端构建 + 网页下载 APK（零环境）
+
+仓库已带 `.github/workflows/build.yml`：**push 代码后 GitHub 会自动构建**，网页上直接下载成品 APK。
+
+**网页操作步骤（配示意图）：**
+
+1. 打开仓库页面 `github.com/ncaylmh/kindle_kpw3_weread_test`，
+   点击顶部的 **「Actions」** 标签；左侧点 **Build APK** 工作流，
+   右侧点最新一条 **绿色 ✓** 的构建记录（红色 ✗ 是失败的旧记录，不用管）：
+
+   ![步骤1：进入 Actions 并选择成功构建](docs/step1-actions-tab.svg)
+
+2. 进入构建详情页后，**拉到页面最底部**的 **Artifacts** 区域，
+   点击 **`eink-weread-debug-apk`** 下载（得到 zip，解压出 `app-debug.apk`）：
+
+   ![步骤2：在页面底部 Artifacts 下载 APK](docs/step2-artifacts.svg)
+
+**注意事项：**
+- **Artifacts 需要先登录 GitHub 账号**（右上角 Sign in），否则看不到下载区；
+- Artifacts **保留 90 天**，过期后让仓库重新构建一次即可（进 Actions → Build APK → 右上 **Run workflow** 按钮手动触发，或 push 任意提交）；
+- 国内网络访问 GitHub 时好时坏，打不开时换个时段或网络再试；
+- 以后每次改代码 push，GitHub 自动出新 APK，同一位置下载。
+
 依赖：Android SDK（API 28 编译即可）、Gradle 6.7+、`com.google.zxing:core:3.4.1`（纯 Java，自动下载）。
 
 ### 使用
