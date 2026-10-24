@@ -20,3 +20,8 @@ Thumbs.db
 tmpapk*
 apk*.zip
 apk_out/
+
+# build logs
+lg/
+logs.zip
+.txt.log
