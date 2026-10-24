@@ -17,8 +17,8 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest 预装 Android SDK（ANDROID_HOME 已就绪），
+      # AGP 会自动补齐缺失的 platform 28 / build-tools，无需额外 setup 步骤
 
       - name: Set up Gradle 6.9.4
         uses: gradle/actions/setup-gradle@v3
