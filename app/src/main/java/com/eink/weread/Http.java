@@ -5,20 +5,67 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.KeyStore;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * 极简 HTTP 层：
  *  - Android 4.4 的 HttpURLConnection 默认不启用 TLSv1.2，这里强制开启
  *    （微信读书服务端要求 TLS 1.2+，不开启会握手失败）
+ *  - 内置 weread 证书链（assets/weread-chain.pem）：老 Kindle ROM 的系统信任库
+ *    缺少 DigiCert Global Root G2，会报"没有安全证书"，这里做系统+内置双通道校验
  *  - 手动管理 weread.qq.com 的 Cookie（读取 set-cookie 并随请求回传）
  */
 final class Http {
+
+    private static volatile boolean trustReady = false;
+
+    /** 由 Session.init 在应用启动时调用一次 */
+    static void initTrust(android.content.Context ctx) {
+        if (trustReady || ctx == null) return;
+        try {
+            final X509TrustManager systemTm = defaultTrustManager();
+            final X509TrustManager bundledTm = bundledTrustManager(ctx);
+            TrustManager merged = new X509TrustManager() {
+                public void checkClientTrusted(X509Certificate[] chain, String authType)
+                        throws CertificateException {
+                    try {
+                        systemTm.checkClientTrusted(chain, authType);
+                    } catch (CertificateException e) {
+                        bundledTm.checkClientTrusted(chain, authType);
+                    }
+                }
+                public void checkServerTrusted(X509Certificate[] chain, String authType)
+                        throws CertificateException {
+                    try {
+                        systemTm.checkServerTrusted(chain, authType);
+                    } catch (CertificateException e) {
+                        bundledTm.checkServerTrusted(chain, authType);
+                    }
+                }
+                public X509Certificate[] getAcceptedIssuers() {
+                    return systemTm.getAcceptedIssuers();
+                }
+            };
+            SSLContext sc = SSLContext.getInstance("TLSv1.2");
+            sc.init(null, new TrustManager[]{merged}, null);
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            trustReady = true;
+        } catch (Throwable t) {
+            // 兜底：保持系统默认
+        }
+    }
 
     static {
         try {
@@ -28,6 +75,37 @@ final class Http {
         } catch (Throwable t) {
             // 老设备兜底：保持系统默认
         }
+    }
+
+    private static X509TrustManager defaultTrustManager() throws Exception {
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+                TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init((KeyStore) null);
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) return (X509TrustManager) tm;
+        }
+        throw new IllegalStateException("no X509TrustManager");
+    }
+
+    /** 从 assets/weread-chain.pem 构建内置信任库 */
+    private static X509TrustManager bundledTrustManager(android.content.Context ctx)
+            throws Exception {
+        InputStream is = ctx.getAssets().open("weread-chain.pem");
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+        ks.load(null, null);
+        int i = 0;
+        for (Object c : cf.generateCertificates(is)) {
+            ks.setCertificateEntry("weread-" + (i++), (X509Certificate) c);
+        }
+        is.close();
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+                TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(ks);
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) return (X509TrustManager) tm;
+        }
+        throw new IllegalStateException("no X509TrustManager in bundled store");
     }
 
     static final String ORIGIN = "https://weread.qq.com";

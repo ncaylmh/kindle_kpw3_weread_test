@@ -14,13 +14,23 @@ import java.util.Map;
 final class Session {
 
     private static SharedPreferences prefs;
+    private static Context appCtx;
     private static final Map<String, String> cookies = new HashMap<String, String>();
 
     static void init(Context ctx) {
         if (prefs == null) {
-            prefs = ctx.getApplicationContext().getSharedPreferences(Const.PREFS, Context.MODE_PRIVATE);
+            appCtx = ctx.getApplicationContext();
+            prefs = appCtx.getSharedPreferences(Const.PREFS, Context.MODE_PRIVATE);
             loadCookies();
+            try {
+                Http.initTrust(appCtx); // 加载内置证书，兼容老 ROM 的信任库
+            } catch (Throwable ignored) {
+            }
         }
+    }
+
+    static Context appContext() {
+        return appCtx;
     }
 
     private static void loadCookies() {
