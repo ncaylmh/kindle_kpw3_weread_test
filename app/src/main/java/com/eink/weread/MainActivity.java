@@ -98,9 +98,9 @@ public class MainActivity extends Activity {
                 String err = null;
                 try {
                     result = Api.fetchShelf();
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     result = null;
-                    err = e.getMessage();
+                    err = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
                 }
                 final List<Api.ShelfBook> fResult = result;
                 final String fErr = err;

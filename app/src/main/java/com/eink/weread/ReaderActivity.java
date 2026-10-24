@@ -90,6 +90,7 @@ public class ReaderActivity extends Activity {
     // ------------------------------------------------------------------ 目录
 
     private void loadChapters() {
+        loading.setMessage("获取章节目录…");
         loading.show();
         new Thread(new Runnable() {
             @Override
@@ -100,10 +101,11 @@ public class ReaderActivity extends Activity {
                     if (chapters.isEmpty()) {
                         err = "章节为空";
                     } else {
+                        loadingStep("获取阅读会话…");
                         psvts = Api.fetchPsvts(bookId, chapters.get(0).chapterUid);
                     }
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 final String fErr = err;
                 runOnUiThread(new Runnable() {
@@ -122,13 +124,30 @@ public class ReaderActivity extends Activity {
         }).start();
     }
 
+    private void loadingStep(final String s) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (loading.isShowing()) loading.setMessage(s);
+            }
+        });
+    }
+
+    /** 错误信息带异常类名，方便定位；避免 null 提示 */
+    private static String describe(Throwable e) {
+        String msg = e.getMessage();
+        String name = e.getClass().getSimpleName();
+        if (msg == null || msg.length() == 0) return name;
+        return name + ": " + msg;
+    }
+
     // ------------------------------------------------------------------ 章节
 
     private void loadChapter(final int index) {
         if (chapters == null || index < 0 || index >= chapters.size()) return;
         chapterIndex = index;
         charPos = 0;
-        loading.setMessage("下载章节…");
+        loading.setMessage("下载章节内容…");
         loading.show();
         new Thread(new Runnable() {
             @Override
@@ -138,8 +157,8 @@ public class ReaderActivity extends Activity {
                 try {
                     ct = Api.fetchChapterText(bookId,
                             chapters.get(index).chapterUid, psvts);
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 final Api.ChapterText fCt = ct;
                 final String fErr = err;

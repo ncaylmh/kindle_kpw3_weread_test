@@ -25,10 +25,24 @@ final class Api {
         String author;
     }
 
-    /** POST https://i.weread.qq.com/api/agent/gateway  body: {api_name, skill_version} */
+    /**
+     * 书架优先走网页版 cookie 通道（POST /web/shelf/sync，扫码登录即可用，无需 API Key），
+     * 失败再回退官方 Skill 网关（需 API Key）。
+     */
     static List<ShelfBook> fetchShelf() throws Exception {
+        // 通道 1：网页版 cookie 通道
+        try {
+            Http.Resp r = Http.postJson("https://weread.qq.com/web/shelf/sync", "{}", null);
+            if (r.ok()) {
+                List<ShelfBook> out = parseShelfJson(r.body);
+                if (!out.isEmpty()) return out;
+            }
+        } catch (Throwable ignored) {
+            // 落到通道 2
+        }
+        // 通道 2：官方 Skill 网关（需要 API Key）
         if (Session.getApiKey().length() == 0) {
-            throw new IllegalStateException("未配置 API Key（菜单键 → 设置 API Key）");
+            throw new IllegalStateException("书架获取失败且未配置 API Key（菜单键 → 设置 API Key）");
         }
         JSONObject body = new JSONObject();
         body.put("api_name", "/shelf/sync");
@@ -42,7 +56,11 @@ final class Api {
         if (!r.ok()) {
             throw new Exception("书架接口 HTTP " + r.code + "（请检查 API Key）");
         }
-        JSONObject root = new JSONObject(r.body);
+        return parseShelfJson(r.body);
+    }
+
+    private static List<ShelfBook> parseShelfJson(String json) throws Exception {
+        JSONObject root = new JSONObject(json);
         JSONArray books = root.optJSONArray("books");
         if (books == null) {
             JSONObject data = root.optJSONObject("data");
@@ -55,7 +73,7 @@ final class Api {
                 if (b == null) continue;
                 JSONObject book = b.optJSONObject("book");
                 if (book == null) book = b;
-                String id = book.optString("bookId", book.optString("bookId", ""));
+                String id = book.optString("bookId", "");
                 if (id.length() == 0) continue;
                 ShelfBook sb = new ShelfBook();
                 sb.bookId = id;
