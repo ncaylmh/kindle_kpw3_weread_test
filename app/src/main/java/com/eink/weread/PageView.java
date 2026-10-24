@@ -22,6 +22,18 @@ import android.view.View;
 public class PageView extends View {
 
     /** 选中后由宿主弹出操作菜单（划线/想法） */
+    /** 章末/章首翻页回调（跨章节） */
+    public interface EdgeListener {
+        void onNextEdge();
+        void onPrevEdge();
+    }
+
+    private EdgeListener edgeListener;
+
+    public void setEdgeListener(EdgeListener l) {
+        edgeListener = l;
+    }
+
     public interface SelectionCallback {
         void onSelectionMenu();
     }
@@ -147,6 +159,17 @@ public class PageView extends View {
         return false;
     }
 
+    public int pageIndexPublic() {
+        return pageIndex;
+    }
+
+    public void goToLastPage() {
+        if (!pages.isEmpty()) {
+            pageIndex = pages.size() - 1;
+            invalidate();
+        }
+    }
+
     public boolean prev() {
         if (pageIndex > 0) {
             pageIndex--;
@@ -267,9 +290,9 @@ public class PageView extends View {
             return;
         }
         if (x < getWidth() / 3f) {
-            prev();
+            if (!prev() && edgeListener != null) edgeListener.onPrevEdge();
         } else {
-            next();
+            if (!next() && edgeListener != null) edgeListener.onNextEdge();
         }
     }
 

@@ -173,6 +173,9 @@ final class Api {
     static class ChapterText {
         String text = "";
         int[] coords = new int[0];
+        /** 插图地址与所在文本偏移（插入页渲染） */
+        java.util.List<String> images = new ArrayList<String>();
+        java.util.List<Integer> imageOffsets = new ArrayList<Integer>();
     }
 
     /** 请求单个分片（e_0/e_1/e_3，e_2 为样式） */
@@ -207,12 +210,13 @@ final class Api {
         }
         ChapterText ct = new ChapterText();
         List<Integer> map = new ArrayList<Integer>();
-        ct.text = WeRead.htmlToText(html, map);
+        ct.text = WeRead.htmlToText(html, map, ct.imageOffsets, ct.images);
         int[] coords = new int[map.size()];
         for (int i = 0; i < coords.length; i++) coords[i] = map.get(i);
         ct.coords = coords;
         Diag.add("解码 e0=" + e0.length() + " e1=" + e1.length() + " e3=" + e3.length()
-                + " → html=" + html.length() + " 文本=" + ct.text.length() + "字");
+                + " → html=" + html.length() + " 文本=" + ct.text.length() + "字 插图="
+                + ct.images.size());
         if (ct.text.length() == 0) {
             Diag.add("⚠ 解码结果为空，原始片段：" + Diag.snippet(html, 200));
         }

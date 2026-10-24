@@ -33,6 +33,11 @@ public class ReaderActivity extends Activity {
     private String bookTitle;
 
     private PageView pageView;
+    private android.widget.ImageView imageView;   // 插图页
+    private List<String> chapterImages = new ArrayList<String>();
+    private List<Integer> chapterImageOffsets = new ArrayList<Integer>();
+    private final java.util.LinkedList<Integer> pendingImages = new java.util.LinkedList<Integer>();
+    private final java.util.HashSet<Integer> imagesShownPages = new java.util.HashSet<Integer>();
     private ProgressDialog loading;
     private final Handler handler = new Handler();
 
@@ -70,13 +75,52 @@ public class ReaderActivity extends Activity {
         setTitle(bookTitle == null ? "阅读" : bookTitle);
 
         pageView = new PageView(this);
+        pageView.setEdgeListener(new PageView.EdgeListener() {
+            @Override
+            public void onNextEdge() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        turnNext();
+                    }
+                });
+            }
+
+            @Override
+            public void onPrevEdge() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        turnPrev();
+                    }
+                });
+            }
+        });
         pageView.setSelectionCallback(new PageView.SelectionCallback() {
             @Override
             public void onSelectionMenu() {
                 showSelectionMenu();
             }
         });
-        setContentView(pageView);
+        imageView = new android.widget.ImageView(this);
+        imageView.setBackgroundColor(android.graphics.Color.WHITE);
+        imageView.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        imageView.setVisibility(android.view.View.GONE);
+        imageView.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                turnNext();
+            }
+        });
+
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.addView(pageView, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(imageView, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(root);
 
         loading = new ProgressDialog(this);
         loading.setMessage("加载中…");
@@ -213,8 +257,14 @@ public class ReaderActivity extends Activity {
                             emptySkips = 0;
                             currentText = fCt.text;
                             coordMap = fCt.coords;
+                            chapterImages = fCt.images;
+                            chapterImageOffsets = fCt.imageOffsets;
+                            pendingImages.clear();
+                            imagesShownPages.clear();
+                            hideImagePage();
                             charPos = restoreCharPos(chapters.get(index).chapterUid);
                             pageView.setText(fCt.text, charPos);
+                            collectPageImages();
                             Diag.add("渲染 文本=" + fCt.text.length() + "字 起始位置=" + charPos
                                     + " 章=" + chapters.get(index).title);
                         }
@@ -644,20 +694,163 @@ public class ReaderActivity extends Activity {
 
     // ------------------------------------------------------------------ 翻页
 
+    /** 下一页：插图队列优先 → 文本翻页 → 跨章 */
+    private void turnNext() {
+        // 1) 正在看插图页：先看本页剩余插图
+        if (imageView.getVisibility() == android.view.View.VISIBLE) {
+            if (!pendingImages.isEmpty()) {
+                showImagePage(pendingImages.poll());
+            } else {
+                hideImagePage();
+                pageView.next();
+            }
+            return;
+        }
+        // 2) 本页还有未展示的插图
+        if (!pendingImages.isEmpty()) {
+            showImagePage(pendingImages.poll());
+            return;
+        }
+        // 3) 文本翻页
+        if (pageView.next()) {
+            collectPageImages();
+            return;
+        }
+        // 4) 跨章
+        if (chapters == null) return;
+        if (chapterIndex + 1 < chapters.size()) {
+            loadChapter(chapterIndex + 1);
+            Toast.makeText(this, "进入下一章：" + chapters.get(chapterIndex + 1).title,
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "已经是最后一章", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 上一页：插图页回退 → 文本翻页 → 上一章末页 */
+    private void turnPrev() {
+        if (imageView.getVisibility() == android.view.View.VISIBLE) {
+            hideImagePage();
+            return;
+        }
+        if (pageView.prev()) {
+            collectPageImages();
+            return;
+        }
+        if (chapters == null) return;
+        if (chapterIndex > 0) {
+            loadChapter(chapterIndex - 1);
+            pageView.goToLastPage();
+            Toast.makeText(this, "回到上一章：" + chapters.get(chapterIndex - 1).title,
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "已经是第一章", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // ------------------------------------------------------------------ 插图
+
+    /** 把当前页里未展示过的插图放入待展示队列 */
+    private void collectPageImages() {
+        if (chapterImages == null || chapterImages.isEmpty()) return;
+        int[] r = pageView.pageRange();
+        int page = pageView.pageIndexPublic();
+        if (imagesShownPages.contains(page)) return;
+        boolean any = false;
+        for (int i = 0; i < chapterImageOffsets.size(); i++) {
+            int off = chapterImageOffsets.get(i);
+            if (off >= r[0] && off < r[1]) {
+                pendingImages.add(i);
+                any = true;
+            }
+        }
+        if (any) imagesShownPages.add(page);
+    }
+
+    private void hideImagePage() {
+        imageView.setVisibility(android.view.View.GONE);
+    }
+
+    /** 下载并灰度渲染一张插图 */
+    private void showImagePage(final int index) {
+        if (index < 0 || index >= chapterImages.size()) {
+            hideImagePage();
+            return;
+        }
+        final String url = chapterImages.get(index);
+        Toast.makeText(this, "加载插图…", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                byte[] data = Http.getBytes(url);
+                android.graphics.Bitmap bmp = null;
+                if (data != null) {
+                    try {
+                        android.graphics.BitmapFactory.Options o =
+                                new android.graphics.BitmapFactory.Options();
+                        o.inJustDecodeBounds = true;
+                        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length, o);
+                        int sw = getResources().getDisplayMetrics().widthPixels;
+                        int sample = 1;
+                        while (o.outWidth / sample > sw && sample < 8) sample *= 2;
+                        o.inJustDecodeBounds = false;
+                        o.inSampleSize = sample;
+                        o.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
+                        bmp = android.graphics.BitmapFactory.decodeByteArray(
+                                data, 0, data.length, o);
+                    } catch (Throwable t) {
+                        Diag.add("IMG 解码失败 " + t.getClass().getSimpleName());
+                    }
+                }
+                final android.graphics.Bitmap fBmp = bmp == null ? null : toGray(bmp);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (fBmp == null) {
+                            Toast.makeText(ReaderActivity.this, "插图加载失败（已跳过）",
+                                    Toast.LENGTH_SHORT).show();
+                            hideImagePage();
+                        } else {
+                            imageView.setImageBitmap(fBmp);
+                            imageView.setVisibility(android.view.View.VISIBLE);
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /** 转灰度（墨水屏显示更干净） */
+    private static android.graphics.Bitmap toGray(android.graphics.Bitmap src) {
+        try {
+            android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(
+                    src.getWidth(), src.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(out);
+            android.graphics.Paint p = new android.graphics.Paint();
+            android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+            cm.setSaturation(0f);
+            p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+            c.drawBitmap(src, 0, 0, p);
+            return out;
+        } catch (Throwable t) {
+            return src;
+        }
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
-                pageView.prev();
+                turnPrev();
                 return true;
             case KeyEvent.KEYCODE_VOLUME_DOWN:
-                pageView.next();
+                turnNext();
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                pageView.prev();
+                turnPrev();
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                pageView.next();
+                turnNext();
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 showMenu();

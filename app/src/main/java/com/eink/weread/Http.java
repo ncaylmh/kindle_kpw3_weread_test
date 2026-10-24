@@ -117,6 +117,38 @@ final class Http {
         boolean ok() { return code >= 200 && code < 300; }
     }
 
+    /** 下载二进制资源（插图），返回 null 表示失败 */
+    static byte[] getBytes(String url) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            conn.setRequestProperty("User-Agent", WeRead.USER_AGENT);
+            conn.setRequestProperty("Referer", ORIGIN + "/");
+            conn.setRequestProperty("Accept", "image/*,*/*");
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                Diag.add("IMG " + code + " " + url);
+                return null;
+            }
+            InputStream is = conn.getInputStream();
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+            is.close();
+            byte[] data = bos.toByteArray();
+            Diag.add("IMG " + code + " " + data.length + "B " + Diag.snippet(url, 60));
+            return data;
+        } catch (Throwable t) {
+            Diag.add("IMG 失败 " + t.getClass().getSimpleName() + " " + Diag.snippet(url, 60));
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
     private Http() {}
 
     static Resp get(String url) throws Exception {

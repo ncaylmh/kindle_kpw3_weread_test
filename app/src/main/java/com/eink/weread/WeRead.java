@@ -417,8 +417,21 @@ public final class WeRead {
      * 保留的全部文本节点字符；显示用的段落分隔 \n\n 为合成字符，映射为 -1。
      */
     public static String htmlToText(String html, List<Integer> coordMap) {
+        return htmlToText(html, coordMap, null, null);
+    }
+
+    /**
+     * 解析正文：同时收集插图（src 与所在文本偏移）。
+     * imgOffsets / imgUrls 可为 null。
+     */
+    public static String htmlToText(String html, List<Integer> coordMap,
+                                    List<Integer> imgOffsets, List<String> imgUrls) {
         List<Integer> map = coordMap != null ? coordMap : new ArrayList<Integer>();
         map.clear();
+        List<Integer> imgo = imgOffsets != null ? imgOffsets : new ArrayList<Integer>();
+        List<String> imgu = imgUrls != null ? imgUrls : new ArrayList<String>();
+        imgo.clear();
+        imgu.clear();
         StringBuilder out = new StringBuilder();
         int i = 0;
         int n = html.length();
@@ -427,8 +440,19 @@ public final class WeRead {
             if (c == '<') {
                 int close = html.indexOf('>', i);
                 if (close < 0) close = n - 1;
-                String tag = html.substring(i, Math.min(close + 1, n)).toLowerCase();
-                if (tag.startsWith("<br")) {
+                String raw = html.substring(i, Math.min(close + 1, n));
+                String tag = raw.toLowerCase();
+                if (tag.startsWith("<img") || tag.startsWith("<image")) {
+                    String src = attr(raw, "src");
+                    if (src == null || src.length() == 0) src = attr(raw, "xlink:href");
+                    if (src != null && src.length() > 0) {
+                        if (src.startsWith("//")) src = "https:" + src;
+                        else if (src.startsWith("/")) src = "https://weread.qq.com" + src;
+                        imgo.add(out.length());
+                        imgu.add(src);
+                        appendMapped(out, map, "\n[插图]\n", -1);
+                    }
+                } else if (tag.startsWith("<br")) {
                     appendMapped(out, map, "\n", -1);
                 } else if (tag.startsWith("</p") || tag.startsWith("</h")
                         || tag.startsWith("</div") || tag.startsWith("</li")
@@ -464,7 +488,32 @@ public final class WeRead {
                 || s.charAt(end - 1) == '\r' || s.charAt(end - 1) == '\t')) end--;
         map.subList(0, Math.min(start, map.size())).clear();
         while (map.size() > end - start) map.remove(map.size() - 1);
+        // 插图偏移同步到 trim 后的坐标系
+        for (int k = 0; k < imgo.size(); k++) {
+            int off = imgo.get(k) - start;
+            if (off < 0) off = 0;
+            if (off > end - start) off = end - start;
+            imgo.set(k, off);
+        }
         return s.substring(start, end);
+    }
+
+    /** 从标签片段里取属性值（支持双引号/单引号/无引号） */
+    private static String attr(String tag, String name) {
+        String lower = tag.toLowerCase();
+        int p = lower.indexOf(name + "=");
+        if (p < 0) return null;
+        int v = p + name.length() + 1;
+        while (v < tag.length() && (tag.charAt(v) == ' ')) v++;
+        if (v >= tag.length()) return null;
+        char q = tag.charAt(v);
+        if (q == '"' || q == '\'') {
+            int e = tag.indexOf(q, v + 1);
+            return e > v ? tag.substring(v + 1, e) : null;
+        }
+        int e = v;
+        while (e < tag.length() && tag.charAt(e) != ' ' && tag.charAt(e) != '>') e++;
+        return tag.substring(v, e);
     }
 
     /** 旧签名（无坐标需求：书评/想法内容清洗） */
