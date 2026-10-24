@@ -199,6 +199,7 @@ final class Api {
             // txt 回退路径
             String t0 = fetchShard("/web/book/chapter/t_0", bookId, chapterUid, psvts, false);
             String t1 = fetchShard("/web/book/chapter/t_1", bookId, chapterUid, psvts, false);
+            Diag.add("txt回退 t_0=" + t0.length() + " t_1=" + t1.length());
             if (t0.length() == 0 && t1.length() == 0) throw new Exception("章节内容为空");
             html = WeRead.decodeShards(t0, t1, "");
         } else {
@@ -210,6 +211,14 @@ final class Api {
         int[] coords = new int[map.size()];
         for (int i = 0; i < coords.length; i++) coords[i] = map.get(i);
         ct.coords = coords;
+        Diag.add("解码 e0=" + e0.length() + " e1=" + e1.length() + " e3=" + e3.length()
+                + " → html=" + html.length() + " 文本=" + ct.text.length() + "字");
+        if (ct.text.length() == 0) {
+            Diag.add("⚠ 解码结果为空，原始片段：" + Diag.snippet(html, 200));
+        }
+        if (html.length() > 0 && ct.text.length() > 0 && ct.text.length() < 50) {
+            Diag.add("⚠ 文本过短片段：" + Diag.snippet(ct.text, 100));
+        }
         return ct;
     }
 

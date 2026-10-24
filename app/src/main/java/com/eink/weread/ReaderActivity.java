@@ -197,6 +197,8 @@ public class ReaderActivity extends Activity {
                             coordMap = fCt.coords;
                             charPos = restoreCharPos(chapters.get(index).chapterUid);
                             pageView.setText(fCt.text, charPos);
+                            Diag.add("渲染 文本=" + fCt.text.length() + "字 起始位置=" + charPos
+                                    + " 章=" + chapters.get(index).title);
                         }
                     }
                 });

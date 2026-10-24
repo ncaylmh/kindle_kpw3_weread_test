@@ -98,6 +98,7 @@ public class MainActivity extends Activity {
                 String err = null;
                 try {
                     result = Api.fetchShelf();
+                    Diag.add("书架 共 " + (result == null ? 0 : result.size()) + " 本");
                 } catch (Throwable e) {
                     result = null;
                     err = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
