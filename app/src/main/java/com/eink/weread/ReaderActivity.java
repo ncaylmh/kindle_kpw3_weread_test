@@ -40,6 +40,8 @@ public class ReaderActivity extends Activity {
     private String psvts;
     private int chapterIndex = -1;
     private int charPos = 0;
+    /** 连续跳过空章节（封面/插图页）的计数，避免死循环 */
+    private int emptySkips = 0;
     private String currentText = "";
     private int[] coordMap = new int[0]; // 显示下标 → 官方坐标（划线 range）
 
@@ -192,7 +194,23 @@ public class ReaderActivity extends Activity {
                         if (fErr != null || fCt == null) {
                             Toast.makeText(ReaderActivity.this,
                                     "章节加载失败：" + fErr, Toast.LENGTH_LONG).show();
+                        } else if (fCt.text.trim().length() < 20) {
+                            // 封面 / 插图页没有正文，自动跳到下一章（最多连跳 8 章）
+                            Diag.add("跳过无正文章节：" + chapters.get(index).title
+                                    + "（" + fCt.text.trim().length() + "字）");
+                            if (emptySkips < 8 && index + 1 < chapters.size()) {
+                                emptySkips++;
+                                Toast.makeText(ReaderActivity.this,
+                                        "「" + chapters.get(index).title + "」无正文，跳到下一章",
+                                        Toast.LENGTH_SHORT).show();
+                                loadChapter(index + 1);
+                            } else {
+                                Toast.makeText(ReaderActivity.this,
+                                        "该章节没有正文（可能是封面/插图页）",
+                                        Toast.LENGTH_LONG).show();
+                            }
                         } else {
+                            emptySkips = 0;
                             currentText = fCt.text;
                             coordMap = fCt.coords;
                             charPos = restoreCharPos(chapters.get(index).chapterUid);
