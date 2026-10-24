@@ -89,9 +89,33 @@ public class ReaderActivity extends Activity {
 
     // ------------------------------------------------------------------ 目录
 
-    private void loadChapters() {
-        loading.setMessage("获取章节目录…");
+    /** 显示加载框并启动秒数计时；45 秒未完成自动提示超时（后台线程结果到达时忽略） */
+    private void showLoading(final String step) {
+        loading.setMessage(step + "（0 秒）");
         loading.show();
+        final long start = System.currentTimeMillis();
+        final Runnable[] tick = new Runnable[1];
+        tick[0] = new Runnable() {
+            @Override
+            public void run() {
+                if (!loading.isShowing()) return;
+                long sec = (System.currentTimeMillis() - start) / 1000;
+                if (sec >= 45) {
+                    loading.dismiss();
+                    Toast.makeText(ReaderActivity.this,
+                            "加载超过 45 秒仍未完成：网络异常或接口失效，请重试",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                loading.setMessage(step + "（" + sec + " 秒）");
+                handler.postDelayed(this, 1000);
+            }
+        };
+        handler.postDelayed(tick[0], 1000);
+    }
+
+    private void loadChapters() {
+        showLoading("获取章节目录");
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -147,8 +171,7 @@ public class ReaderActivity extends Activity {
         if (chapters == null || index < 0 || index >= chapters.size()) return;
         chapterIndex = index;
         charPos = 0;
-        loading.setMessage("下载章节内容…");
-        loading.show();
+        showLoading("下载章节内容");
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -253,7 +276,7 @@ public class ReaderActivity extends Activity {
             toast("无法计算选区坐标（见 README 坐标校准）");
             return;
         }
-        loading.show();
+        showLoading("正在划线");
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -271,8 +294,8 @@ public class ReaderActivity extends Activity {
                         }
                     } catch (Exception ignored) {
                     }
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 final String fErr = err;
                 final String fServerRange = serverRange;
@@ -330,7 +353,7 @@ public class ReaderActivity extends Activity {
                                             pageView.clearSelection();
                                         }
                                     });
-                                } catch (final Exception e) {
+                                } catch (final Throwable e) {
                                     runOnUiThread(new Runnable() {
                                         @Override
                                         public void run() {
@@ -380,7 +403,7 @@ public class ReaderActivity extends Activity {
                             percent, summary, psvts, enter);
                     enteredSession = true;
                     lastReportOkAt = System.currentTimeMillis();
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     if (!retryAfterRenew && Session.renewalAllowed()) {
                         try {
                             Api.renewCookie();
@@ -440,7 +463,7 @@ public class ReaderActivity extends Activity {
 
     private void showUnderlines(final boolean best) {
         if (chapters == null || chapterIndex < 0) return;
-        loading.show();
+        showLoading("获取划线");
         new Thread(new Runnable() {
             private List<Api.Underline> result;
             private String err;
@@ -451,8 +474,8 @@ public class ReaderActivity extends Activity {
                     result = best
                             ? Api.fetchBestBookmarks(bookId)
                             : Api.fetchChapterUnderlines(bookId, chapters.get(chapterIndex).chapterUid);
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 runOnUiThread(new Runnable() {
                     @Override
@@ -477,7 +500,7 @@ public class ReaderActivity extends Activity {
 
     private void showChapterThoughts() {
         if (chapters == null || chapterIndex < 0) return;
-        loading.show();
+        showLoading("获取本章想法");
         final Api.Chapter ch = chapters.get(chapterIndex);
         new Thread(new Runnable() {
             private List<Api.Thought> thoughts;
@@ -494,8 +517,8 @@ public class ReaderActivity extends Activity {
                     } else {
                         thoughts = Api.fetchChapterThoughts(bookId, ch.chapterUid, ranges);
                     }
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 runOnUiThread(new Runnable() {
                     @Override
@@ -519,7 +542,7 @@ public class ReaderActivity extends Activity {
     }
 
     private void showBookReviews() {
-        loading.show();
+        showLoading("获取书评");
         new Thread(new Runnable() {
             private List<Api.Thought> reviews;
             private String err;
@@ -528,8 +551,8 @@ public class ReaderActivity extends Activity {
             public void run() {
                 try {
                     reviews = Api.fetchBookReviews(bookId, 1, 20);
-                } catch (Exception e) {
-                    err = e.getMessage();
+                } catch (Throwable e) {
+                    err = describe(e);
                 }
                 runOnUiThread(new Runnable() {
                     @Override

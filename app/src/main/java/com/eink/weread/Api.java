@@ -25,24 +25,38 @@ final class Api {
         String author;
     }
 
+    /** 网页版通道请求头（部分接口缺 Referer 会被拒） */
+    private static Map<String, String> webHeaders() {
+        Map<String, String> h = new java.util.HashMap<String, String>();
+        h.put("Origin", Http.ORIGIN);
+        h.put("Referer", "https://weread.qq.com/");
+        return h;
+    }
+
     /**
      * 书架优先走网页版 cookie 通道（POST /web/shelf/sync，扫码登录即可用，无需 API Key），
-     * 失败再回退官方 Skill 网关（需 API Key）。
+     * 失败再回退官方 Skill 网关（需 API Key）。失败信息带具体原因，不再静默。
      */
     static List<ShelfBook> fetchShelf() throws Exception {
         // 通道 1：网页版 cookie 通道
+        String webErr = null;
         try {
-            Http.Resp r = Http.postJson("https://weread.qq.com/web/shelf/sync", "{}", null);
+            Http.Resp r = Http.postJson("https://weread.qq.com/web/shelf/sync",
+                    "{}", webHeaders());
             if (r.ok()) {
                 List<ShelfBook> out = parseShelfJson(r.body);
                 if (!out.isEmpty()) return out;
+                webErr = "书架返回为空";
+            } else {
+                webErr = "HTTP " + r.code + " " + r.body;
             }
-        } catch (Throwable ignored) {
-            // 落到通道 2
+        } catch (Throwable e) {
+            webErr = e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage());
         }
         // 通道 2：官方 Skill 网关（需要 API Key）
         if (Session.getApiKey().length() == 0) {
-            throw new IllegalStateException("书架获取失败且未配置 API Key（菜单键 → 设置 API Key）");
+            throw new IllegalStateException("网页书架失败(" + webErr + ")，且未配置 API Key 兜底");
         }
         JSONObject body = new JSONObject();
         body.put("api_name", "/shelf/sync");
@@ -216,8 +230,31 @@ final class Api {
 
     // ------------------------------------------------------------------ 划线
 
-    /** 本章划线（gateway /book/underlines，含自己的和好友的） */
+    /** 本章划线：网页 /web/book/bookmarklist 优先（免 Key），失败回退 gateway /book/underlines */
     static List<Underline> fetchChapterUnderlines(String bookId, String chapterUid) throws Exception {
+        // 通道 1：网页 bookmarklist（全书我自己的划线，按章节过滤）
+        try {
+            Http.Resp r = Http.get("https://weread.qq.com/web/book/bookmarklist?bookId="
+                    + WeRead.urlencode(bookId), webHeaders());
+            if (r.ok()) {
+                JSONArray arr = new JSONObject(r.body).optJSONArray("bookmarks");
+                List<Underline> out = new ArrayList<Underline>();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.optJSONObject(i);
+                        if (o == null) continue;
+                        if (!chapterUid.equals(o.optString("chapterUid", ""))) continue;
+                        Underline u = new Underline();
+                        u.range = o.optString("range", "");
+                        u.markText = o.optString("markText", o.optString("abstract", ""));
+                        if (u.markText.length() > 0) out.add(u);
+                    }
+                }
+                if (!out.isEmpty()) return out;
+            }
+        } catch (Throwable ignored) {
+        }
+        // 通道 2：Skill 网关（含好友划线，需要 API Key）
         JSONObject body = new JSONObject();
         body.put("api_name", "/book/underlines");
         body.put("skill_version", WeRead.SKILL_VERSION);
@@ -240,24 +277,40 @@ final class Api {
         return out;
     }
 
-    /** 全书热门划线（i.weread.qq.com/book/bestbookmarks，cookie 认证） */
+    /** 全书热门划线：web 域优先，i 域回退（均 cookie 认证，免 Key） */
     static List<Underline> fetchBestBookmarks(String bookId) throws Exception {
-        Http.Resp r = Http.get("https://i.weread.qq.com/book/bestbookmarks?bookId="
-                + WeRead.urlencode(bookId));
-        if (!r.ok()) throw new Exception("热门划线 HTTP " + r.code);
-        JSONArray arr = new JSONObject(r.body).optJSONArray("bookmarks");
-        List<Underline> out = new ArrayList<Underline>();
-        if (arr != null) {
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null) continue;
-                Underline u = new Underline();
-                u.range = o.optString("range", "");
-                u.markText = o.optString("markText", "");
-                if (u.markText.length() > 0) out.add(u);
+        String[] urls = {
+                "https://weread.qq.com/web/book/bestbookmarks?bookId="
+                        + WeRead.urlencode(bookId) + "&maxIdx=0",
+                "https://i.weread.qq.com/book/bestbookmarks?bookId="
+                        + WeRead.urlencode(bookId)
+        };
+        Exception last = null;
+        for (String url : urls) {
+            try {
+                Http.Resp r = Http.get(url, webHeaders());
+                if (!r.ok()) {
+                    last = new Exception("热门划线 HTTP " + r.code);
+                    continue;
+                }
+                JSONArray arr = new JSONObject(r.body).optJSONArray("bookmarks");
+                List<Underline> out = new ArrayList<Underline>();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.optJSONObject(i);
+                        if (o == null) continue;
+                        Underline u = new Underline();
+                        u.range = o.optString("range", "");
+                        u.markText = o.optString("markText", "");
+                        if (u.markText.length() > 0) out.add(u);
+                    }
+                }
+                return out;
+            } catch (Exception e) {
+                last = e;
             }
         }
-        return out;
+        throw last != null ? last : new Exception("热门划线获取失败");
     }
 
     // ------------------------------------------------------------------ 想法 / 书评
@@ -287,10 +340,37 @@ final class Api {
         return t;
     }
 
-    /** 本章想法（gateway /book/readreviews，按划线 range 批量拉取，每批 ≤30） */
+    /** 本章想法：网页 /web/book/readreviews 优先（免 Key），失败回退 gateway */
     static List<Thought> fetchChapterThoughts(String bookId, String chapterUid,
                                               List<String> ranges) throws Exception {
         List<Thought> out = new ArrayList<Thought>();
+        // 通道 1：网页 cookie 通道
+        try {
+            JSONObject body = new JSONObject();
+            body.put("bookId", bookId);
+            JSONArray cr = new JSONArray();
+            JSONObject one = new JSONObject();
+            one.put("chapterUid", chapterUid);
+            JSONArray rb = new JSONArray();
+            for (String s : ranges) rb.put(s);
+            one.put("ranges", rb);
+            cr.put(one);
+            body.put("chapterRanges", cr);
+            Http.Resp r = Http.postJson("https://weread.qq.com/web/book/readreviews",
+                    body.toString(), webHeaders());
+            if (r.ok()) {
+                JSONArray arr = new JSONObject(r.body).optJSONArray("reviews");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.optJSONObject(i);
+                        if (o != null) out.add(parseReview(o));
+                    }
+                }
+                if (!out.isEmpty()) return out;
+            }
+        } catch (Throwable ignored) {
+        }
+        // 通道 2：Skill 网关（需要 API Key）
         for (int from = 0; from < ranges.size(); from += 30) {
             JSONArray batch = new JSONArray();
             for (int i = from; i < Math.min(from + 30, ranges.size()); i++) {
@@ -322,6 +402,25 @@ final class Api {
         body.put("bookId", bookId);
         body.put("reviewListType", reviewListType);
         body.put("count", count);
+        // 通道 1：网页 /web/review/list（免 Key）
+        try {
+            Http.Resp wr = Http.get("https://weread.qq.com/web/review/list?bookId="
+                    + WeRead.urlencode(bookId)
+                    + "&listType=5&maxIdx=0&sortType=1&count=" + count, webHeaders());
+            if (wr.ok()) {
+                JSONArray warr = new JSONObject(wr.body).optJSONArray("reviews");
+                List<Thought> out = new ArrayList<Thought>();
+                if (warr != null) {
+                    for (int i = 0; i < warr.length(); i++) {
+                        JSONObject o = warr.optJSONObject(i);
+                        if (o != null) out.add(parseReview(o));
+                    }
+                }
+                if (!out.isEmpty()) return out;
+            }
+        } catch (Throwable ignored) {
+        }
+        // 通道 2：Skill 网关
         Http.Resp r = postGateway(body);
         if (!r.ok()) throw new Exception("书评接口 HTTP " + r.code);
         JSONArray arr = new JSONObject(r.body).optJSONArray("reviews");
