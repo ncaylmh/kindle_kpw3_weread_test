@@ -549,7 +549,7 @@ public class ReaderActivity extends Activity {
         float fontDp = Session.prefFloat("font_px", 19f);
         float lineMult = Session.prefFloat("line_mult", 1.30f);
         int padDp = Session.prefInt("pad_h", 18);
-        pageView.setFontPx(dip(fontDp));
+        pageView.setFontPx(dip(Math.round(fontDp)));
         pageView.setSpacingMult(lineMult);
         pageView.setPadH(dip(padDp));
     }
@@ -558,7 +558,7 @@ public class ReaderActivity extends Activity {
         float cur = Session.prefFloat("font_px", 19f);
         float v = Math.max(14f, Math.min(32f, cur + dir * 1.5f));
         Session.setPrefFloat("font_px", v);
-        pageView.setFontPx(dip(v));
+        pageView.setFontPx(dip(Math.round(v)));
         toast("字号 " + Math.round(v));
     }
 
